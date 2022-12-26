@@ -14,7 +14,7 @@ After the instalation ends you can activate your environment with
 conda activate urlb
 ```
 
-## Implemented Agents
+## Implemented Agents 1
 | Agent | Command | Implementation Author(s) | Paper |
 |---|---|---|---|
 | ICM | `agent=icm` | Denis | [paper](https://arxiv.org/abs/1705.05363)|
