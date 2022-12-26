@@ -1,4 +1,4 @@
-name: urlb
+name: urlb_benchmark
 channels:
   - defaults
 dependencies:
