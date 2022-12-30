@@ -10,6 +10,7 @@ import torch.nn.functional as F
 from omegaconf import OmegaConf
 from torch import distributions as pyd
 from torch.distributions.utils import _standard_normal
+from functools import partial
 
 
 class eval_mode:
@@ -317,3 +318,51 @@ class PBE(object):
             reward = reward.mean(dim=1, keepdim=True)  # (b1, 1)
         reward = torch.log(reward + 1.0)
         return reward
+
+class Linear(nn.Linear):
+    def forward(self, x):
+        weight = self.weight
+        weight_mean = weight.mean(dim=1, keepdim=True)
+        weight = weight - weight_mean
+        std = weight.std(dim=1, keepdim=True) + 1e-5
+        weight = weight / std.expand_as(weight)
+        return F.linear(x, weight, self.bias)
+
+
+class MLP(torch.nn.Module):
+    def __init__(
+        self, input_dim, output_dim, hidden_dim, num_layers, weight_standardization=False, normalization=None):
+        super().__init__()
+        assert num_layers >= 0, "negative layers?!?"
+        if normalization is not None:
+            assert callable(normalization), "normalization must be callable"
+
+        if num_layers == 0:
+            self.net = torch.nn.Identity()
+            return
+
+        if num_layers == 1:
+            self.net = torch.nn.Linear(input_dim, output_dim)
+            return
+
+        linear_net = Linear if weight_standardization else torch.nn.Linear
+
+        layers = []
+        prev_dim = input_dim
+        for _ in range(num_layers - 1):
+            layers.append(linear_net(prev_dim, hidden_dim))
+            if normalization is not None:
+                layers.append(normalization())
+            layers.append(torch.nn.ReLU())
+            prev_dim = hidden_dim
+
+        layers.append(torch.nn.Linear(hidden_dim, output_dim))
+
+        self.net = torch.nn.Sequential(*layers)
+
+    def forward(self, x):
+        return self.net(x)
+
+def get_mlp_normalization(mlp_hidden_dim):
+
+    return partial(torch.nn.BatchNorm1d, num_features=mlp_hidden_dim)
