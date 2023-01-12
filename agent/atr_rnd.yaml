@@ -1,5 +1,5 @@
 # @package agent
-_target_: agent.atr.ATRAgent
+_target_: agent.atr_rnd.ATR_RNDAgent
 name: atr
 reward_free: ${reward_free}
 obs_type: ??? # to be specified later

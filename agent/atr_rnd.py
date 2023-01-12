@@ -10,10 +10,10 @@ from dm_env import specs
 from functools import partial
 
 import utils
-from agent.ddpg import DDPGAgent
+from agent.ddpg import DDPGAgent, Encoder
 
 
-class ATR(nn.Module):
+class ATR_RND(nn.Module):
     def __init__(self, obs_dim, skill_dim, hidden_dim, action_dim, num_action_skill, prediction_mlp_layers, projection_mlp_layers, device):
         super().__init__()
         self.device=device
@@ -84,7 +84,7 @@ class ATR(nn.Module):
         return emb_a, a, o
 
 
-class ATRAgent(DDPGAgent):
+class ATR_RNDAgent(DDPGAgent):
     def __init__(self, skill_dim, num_action_skill, prediction_mlp_layers, projection_mlp_layers, atr_scale,
                  update_encoder, variance_loss_epsilon, invariance_loss_weight, variance_loss_weight,
                  covariance_loss_weight, **kwargs):
@@ -96,12 +96,14 @@ class ATRAgent(DDPGAgent):
         self.invariance_loss_weight= invariance_loss_weight
         self.variance_loss_weight= variance_loss_weight
         self.covariance_loss_weight= covariance_loss_weight
+
         kwargs["meta_dim"] = self.skill_dim
         # create actor and critic
         super().__init__(**kwargs)
 
+        self.atr_encoder = Encoder(self.obs_shape).to(self.device)
         # create atr
-        self.atr = ATR(self.obs_dim-self.skill_dim, self.skill_dim,
+        self.atr = ATR_RND(self.obs_dim-self.skill_dim, self.skill_dim,
                            kwargs['hidden_dim'], self.action_dim, num_action_skill, prediction_mlp_layers,
                        projection_mlp_layers, kwargs['device']).to(kwargs['device'])
 
@@ -120,7 +122,7 @@ class ATRAgent(DDPGAgent):
 
     def init_meta(self):
         skill = np.zeros(self.skill_dim, dtype=np.float32)
-        obs_trail = np.zeros((self.num_action_skill, self.obs_dim- self.skill_dim), dtype=np.float32)
+        obs_trail = np.zeros((self.num_action_skill, *self.obs_shape), dtype=np.float32)
         action_trail = np.zeros((self.num_action_skill, self.action_dim), dtype=np.float32)
         meta = OrderedDict()
         meta['skill'] = skill
@@ -137,8 +139,8 @@ class ATRAgent(DDPGAgent):
             meta['action_trail'][-1] = time_step.action
             meta['obs_trail'][:-1] = meta['obs_trail'][1:]
             obs = torch.as_tensor(time_step.observation, device=self.device).unsqueeze(dim=0)
-            obs_h = self.encoder(obs).detach().cpu().numpy() #.squeeze()
-            meta['obs_trail'][-1] = obs_h
+            #obs_h = self.atr_encoder(obs).detach().cpu().numpy() #.squeeze()
+            meta['obs_trail'][-1] = obs.detach().cpu().numpy()
             action_x, obs_x = self.prepare_unsupervised_data(meta['action_trail'], meta['obs_trail'])
             _, z_a, _ = self.atr(torch.from_numpy(action_x), torch.from_numpy(obs_x))
             meta['skill'] = z_a.detach().cpu().numpy().squeeze()
